@@ -24,8 +24,8 @@ jobs:
       KAFKA_SERVIDORES: localhost:9092
       DATABASE_URL_TESTE: postgresql://onibus:onibus@localhost:5432/onibus_teste
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - run: pip install -e ".[dev]"
@@ -37,11 +37,17 @@ jobs:
             sleep 2
           done
           exit 1
-      - run: pytest -v
+      - name: Testes
+        run: |
+          set -o pipefail
+          pytest -v --tb=short 2>&1 | tee pytest.log
+      - name: Resumo das falhas
+        if: failure()
+        run: grep -E "^(FAILED|ERROR)|^E  " pytest.log | head -30 | sed 's/^/::error::/'
 
   imagem:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: docker build -t onibus-tempo-real .
       - run: docker compose config --quiet

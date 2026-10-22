@@ -124,7 +124,16 @@ def rodar(max_lotes: int | None = None, ocioso_para: float | None = None) -> Non
     con = banco.conectar(config.DATABASE_URL)
     banco.criar_esquema(con)
     consumidor = Consumer(kafka.consumidor_config())
-    consumidor.subscribe([config.TOPICO_POSICOES])
+    ultima_mensagem = time.monotonic()
+    atribuido = False  # o consumidor só recebe mensagens depois que o grupo lhe atribui partições
+
+    def ao_atribuir(_consumidor, particoes):
+        nonlocal atribuido, ultima_mensagem
+        atribuido = True
+        ultima_mensagem = time.monotonic()
+        log.info("partições atribuídas: %s", [p.partition for p in particoes])
+
+    consumidor.subscribe([config.TOPICO_POSICOES], on_assign=ao_atribuir)
     descartes = Producer(kafka.produtor_config())
     parar = False
 
@@ -134,7 +143,7 @@ def rodar(max_lotes: int | None = None, ocioso_para: float | None = None) -> Non
 
     signal.signal(signal.SIGTERM, ao_sinal)
     signal.signal(signal.SIGINT, ao_sinal)
-    lotes, ultima_limpeza, ultima_mensagem = 0, 0.0, time.monotonic()
+    lotes, ultima_limpeza = 0, 0.0
     try:
         while not parar and (max_lotes is None or lotes < max_lotes):
             mensagens = consumidor.consume(num_messages=2000, timeout=1.0)
@@ -142,7 +151,7 @@ def rodar(max_lotes: int | None = None, ocioso_para: float | None = None) -> Non
                 limpar(con)
                 ultima_limpeza = time.monotonic()
             if not mensagens:
-                if ocioso_para is not None and time.monotonic() - ultima_mensagem > ocioso_para:
+                if ocioso_para is not None and atribuido and time.monotonic() - ultima_mensagem > ocioso_para:
                     break
                 continue
             ultima_mensagem = time.monotonic()
