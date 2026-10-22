@@ -41,7 +41,7 @@ ULTIMA_JANELA_FECHADA = "date_bin('5 minutes', now(), timestamptz '2000-01-01') 
 
 CIDADES = {
     "rio": {"nome": "Rio", "titulo": "Ônibus do Rio, agora", "fonte": "API de GPS da Prefeitura do Rio",
-            "limites": [[-43.80, -23.08], [-43.10, -22.74]]},
+            "limites": [[-43.80, -23.08], [-43.05, -22.74]]},
     "sp": {"nome": "São Paulo", "titulo": "Ônibus de São Paulo, agora", "fonte": "API Olho Vivo da SPTrans",
            "limites": [[-46.83, -23.80], [-46.36, -23.40]]},
 }

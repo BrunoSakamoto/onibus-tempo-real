@@ -157,8 +157,8 @@ let ultimaAtualizacao = null;
 const mapa = new maplibregl.Map({
   container: "mapa",
   style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-  bounds: [[-43.80, -23.08], [-43.10, -22.74]],
-  fitBoundsOptions: { padding: 12 },
+  bounds: [[-43.80, -23.08], [-43.05, -22.74]],
+  fitBoundsOptions: { padding: 24 },
   attributionControl: { compact: true },
 });
 mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");

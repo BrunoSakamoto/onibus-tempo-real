@@ -9,7 +9,7 @@ mostra tudo num mapa ao vivo.
 **Python · Apache Kafka · PostgreSQL · FastAPI · MapLibre · Docker · GitHub Actions**
 
 ![Painel com o mapa dos ônibus do Rio e as linhas mais lentas na última janela](docs/painel.jpg)
-<sub>Captura com dados reais de 22/10/2026, às 10h, sem o mapa de ruas de fundo. Cada ponto é um ônibus.</sub>
+<sub>Captura com dados reais de 22/10/2026, às 10h25. Cada ponto é um ônibus, na cor da velocidade informada pelo GPS.</sub>
 
 ## Arquitetura
 
