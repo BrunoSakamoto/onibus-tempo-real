@@ -1,0 +1,36 @@
+[project]
+name = "onibus-tempo-real"
+version = "0.1.0"
+description = "Posição dos ônibus em tempo real: API pública -> Kafka -> processador com janelas -> PostgreSQL -> mapa ao vivo"
+requires-python = ">=3.11"
+dependencies = [
+    "confluent-kafka>=2.16,<3",
+    "psycopg[binary,pool]>=3.3,<4",
+    "httpx>=0.28,<1",
+    "fastapi>=0.159,<1",
+    "uvicorn>=0.54,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9", "ruff>=0.17"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["onibus*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "BLE"]
+
+[tool.pytest.ini_options]
+markers = ["integracao: precisa de PostgreSQL (DATABASE_URL_TESTE) e, nos de ponta a ponta, Kafka (KAFKA_SERVIDORES)"]
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
+
+[tool.setuptools.package-data]
+onibus = ["estatico/*"]

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    services:
+      kafka:
+        image: apache/kafka:4.1.0
+        ports: ["9092:9092"]
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: onibus
+          POSTGRES_PASSWORD: onibus
+          POSTGRES_DB: onibus_teste
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U onibus" --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      KAFKA_SERVIDORES: localhost:9092
+      DATABASE_URL_TESTE: postgresql://onibus:onibus@localhost:5432/onibus_teste
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - name: Espera o Kafka
+        run: |
+          for i in $(seq 1 30); do
+            python -c "from confluent_kafka.admin import AdminClient; AdminClient({'bootstrap.servers': 'localhost:9092'}).list_topics(timeout=5)" && exit 0
+            sleep 2
+          done
+          exit 1
+      - run: pytest -v
+
+  imagem:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t onibus-tempo-real .
+      - run: docker compose config --quiet

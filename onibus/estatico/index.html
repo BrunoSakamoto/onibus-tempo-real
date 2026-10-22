@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ônibus em tempo real</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+  :root {
+    --fundo: #0e1013;
+    --painel: #15181d;
+    --linha: #262a31;
+    --texto: #e8e6e1;
+    --apagado: #8b9099;
+    --parado: #ff5a4e;
+    --lento: #ffb547;
+    --rodando: #4fd18b;
+    --destaque: #ffd84a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--fundo); color: var(--texto); }
+  body { font: 15px/1.4 "IBM Plex Sans Condensed", system-ui, sans-serif; display: grid; grid-template-columns: 360px 1fr; }
+  #mapa { height: 100vh; }
+  .num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  aside { height: 100vh; overflow-y: auto; background: var(--painel); border-right: 1px solid var(--linha); display: flex; flex-direction: column; }
+  header { padding: 22px 22px 16px; border-bottom: 1px solid var(--linha); }
+  h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+  .ao-vivo { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--apagado); font-size: 13px; }
+  .ao-vivo i { width: 8px; height: 8px; border-radius: 50%; background: var(--rodando); box-shadow: 0 0 0 0 var(--rodando); animation: pulso 2s infinite; }
+  .ao-vivo.parado i { background: var(--parado); animation: none; }
+  @keyframes pulso { 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+  section { padding: 18px 22px; border-bottom: 1px solid var(--linha); }
+  h2 { margin: 0 0 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--apagado); }
+  .numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .numeros div { display: flex; flex-direction: column; }
+  .numeros b { font-size: 30px; font-weight: 600; line-height: 1; }
+  .numeros small { color: var(--apagado); font-size: 12px; margin-top: 6px; }
+  .serie { margin-top: 16px; }
+  .serie svg { width: 100%; height: 56px; display: block; }
+  .serie .eixo { display: flex; justify-content: space-between; color: var(--apagado); font-size: 11px; margin-top: 4px; }
+
+  .busca { display: flex; gap: 8px; margin-bottom: 12px; }
+  .busca input { flex: 1; min-width: 0; background: var(--fundo); border: 1px solid var(--linha); color: var(--texto); border-radius: 6px; padding: 8px 10px; font: inherit; }
+  .busca input:focus { outline: 2px solid var(--destaque); outline-offset: -1px; }
+  .busca button, .filtro button { background: transparent; color: var(--apagado); border: 1px solid var(--linha); border-radius: 6px; padding: 0 10px; font: inherit; cursor: pointer; }
+  .busca button:hover, .filtro button:hover { color: var(--texto); }
+
+  ol { list-style: none; margin: 0; padding: 0; }
+  ol li button { width: 100%; display: grid; grid-template-columns: 118px 1fr 44px; gap: 10px; align-items: center; padding: 7px 0; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; border-radius: 4px; }
+  ol li button:hover .rotulo, ol li button:focus-visible .rotulo { color: var(--destaque); }
+  ol li button:focus-visible { outline: 2px solid var(--destaque); }
+  .rotulo { font-weight: 600; font-size: 16px; }
+  .rotulo small { display: block; font-weight: 400; font-size: 11px; color: var(--apagado); }
+  .barra { height: 6px; background: var(--linha); border-radius: 3px; overflow: hidden; }
+  .barra span { display: block; height: 100%; border-radius: 3px; }
+  .kmh { text-align: right; font-size: 14px; }
+
+  .filtro { display: none; }
+  .filtro.ativo { display: block; }
+  .filtro .topo { display: flex; justify-content: space-between; align-items: baseline; }
+  .filtro .topo b { font-size: 24px; }
+  .filtro button { height: 30px; }
+  .filtro > b { font-size: 26px; font-weight: 600; }
+  .filtro p { margin: 6px 0 0; color: var(--apagado); font-size: 13px; }
+
+  .saude { margin-top: auto; border-bottom: 0; font-size: 13px; }
+  .saude dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; }
+  .saude dt { color: var(--apagado); }
+  .saude dd { margin: 0; text-align: right; }
+  .saude p { margin: 12px 0 0; color: var(--apagado); font-size: 12px; }
+
+  .legenda { position: fixed; right: 12px; bottom: 30px; background: rgba(21, 24, 29, .92); border: 1px solid var(--linha); border-radius: 8px; padding: 10px 12px; font-size: 12px; display: grid; gap: 5px; }
+  .legenda span { display: flex; align-items: center; gap: 8px; }
+  .legenda i { width: 10px; height: 10px; border-radius: 50%; }
+  .vazio { color: var(--apagado); font-size: 13px; }
+  .maplibregl-popup-content { background: var(--painel); color: var(--texto); font: 13px/1.4 "IBM Plex Sans Condensed", sans-serif; border: 1px solid var(--linha); }
+  .maplibregl-popup-tip { border-top-color: var(--painel) !important; }
+  .maplibregl-ctrl-attrib { background: rgba(14, 16, 19, .7) !important; }
+  .maplibregl-ctrl-attrib a { color: var(--apagado) !important; }
+
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
+    #mapa { height: 55vh; grid-row: 1; }
+    aside { grid-row: 2; height: auto; border-right: 0; border-top: 1px solid var(--linha); }
+    .legenda { position: absolute; top: calc(55vh - 92px); bottom: auto; right: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .ao-vivo i { animation: none; } }
+</style>
+</head>
+<body>
+<aside>
+  <header>
+    <h1 id="titulo">Ônibus em tempo real</h1>
+    <div class="ao-vivo" id="aoVivo"><i></i><span id="atualizado">conectando…</span></div>
+  </header>
+
+  <section>
+    <h2 id="tituloJanela">Últimos 5 minutos</h2>
+    <div class="numeros">
+      <div><b class="num" id="nOnibus">–</b><small>ônibus em linha</small></div>
+      <div><b class="num" id="nVelocidade">–</b><small>km/h em média</small></div>
+      <div><b class="num" id="nParados">–</b><small>parados</small></div>
+    </div>
+    <div class="serie" id="serieCidade"></div>
+  </section>
+
+  <section class="filtro" id="filtro">
+    <div class="topo"><h2>Linha selecionada</h2><button id="limpar" type="button">Ver todas</button></div>
+    <b class="num" id="filtroLinha"></b>
+    <p id="filtroTexto"></p>
+    <div class="serie" id="serieLinha"></div>
+  </section>
+
+  <section>
+    <h2>Linhas mais lentas agora</h2>
+    <form class="busca" id="busca">
+      <input id="campoLinha" placeholder="Buscar linha (ex.: 474)" autocomplete="off" aria-label="Número da linha">
+      <button type="submit">Ver</button>
+    </form>
+    <ol id="lentas"><li class="vazio">Aguardando a primeira janela fechada…</li></ol>
+  </section>
+
+  <section class="saude">
+    <h2>Pipeline, últimos 10 min</h2>
+    <dl>
+      <dt>Posições processadas</dt><dd class="num" id="sMensagens">–</dd>
+      <dt>Repetidas ignoradas</dt><dd class="num" id="sDuplicadas">–</dd>
+      <dt>Inválidas (descartadas)</dt><dd class="num" id="sInvalidas">–</dd>
+      <dt>Atraso GPS → API</dt><dd class="num" id="sFonte">–</dd>
+      <dt>Atraso API → banco</dt><dd class="num" id="sPipeline">–</dd>
+    </dl>
+    <p>Dados: <span id="fonte">API pública de GPS dos ônibus</span>. Velocidade calculada pelo deslocamento entre pontos de GPS, em janelas de 5 minutos.</p>
+  </section>
+</aside>
+
+<main id="mapa" aria-label="Mapa com a posição dos ônibus"></main>
+<div class="legenda" aria-hidden="true">
+  <span><i style="background: var(--rodando)"></i>andando, 20 km/h ou mais</span>
+  <span><i style="background: var(--lento)"></i>devagar</span>
+  <span><i style="background: var(--parado)"></i>parado</span>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+const hora = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+const cor = (kmh) => kmh == null ? "#8b9099" : kmh < 3 ? "#ff5a4e" : kmh < 20 ? "#ffb547" : "#4fd18b";
+let linhaFiltrada = null;
+let ultimaAtualizacao = null;
+
+const mapa = new maplibregl.Map({
+  container: "mapa",
+  style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  bounds: [[-43.80, -23.08], [-43.10, -22.74]],
+  fitBoundsOptions: { padding: 12 },
+  attributionControl: { compact: true },
+});
+mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+json("/api/cidade").then((c) => {
+  document.title = c.titulo;
+  $("titulo").textContent = c.titulo;
+  $("fonte").textContent = c.fonte;
+  if (c.id !== "rio") mapa.fitBounds(c.limites, { padding: 12, duration: 0 });
+}).catch(() => {});
+
+mapa.on("load", () => {
+  mapa.addSource("onibus", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  mapa.addLayer({
+    id: "onibus",
+    type: "circle",
+    source: "onibus",
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"],
+        10, ["case", ["get", "destaque"], 5, 2.2],
+        14, ["case", ["get", "destaque"], 8, 5],
+        17, ["case", ["get", "destaque"], 11, 8]],
+      "circle-color": ["get", "cor"],
+      "circle-opacity": ["case", ["get", "apagado"], 0.12, 0.9],
+      "circle-stroke-width": ["case", ["get", "destaque"], 1.5, 0],
+      "circle-stroke-color": "#0e1013",
+    },
+  });
+  mapa.on("click", "onibus", (e) => {
+    const p = e.features[0].properties;
+    const velocidade = p.velocidade == null || p.velocidade === "null" ? "sem velocidade" : `${fmt.format(p.velocidade)} km/h`;
+    new maplibregl.Popup({ closeButton: false })
+      .setLngLat(e.lngLat)
+      .setHTML(`<b>Linha ${p.linha}</b><br>Veículo ${p.veiculo}<br>${velocidade} · há ${p.idade} s`)
+      .addTo(mapa);
+  });
+  mapa.on("mouseenter", "onibus", () => (mapa.getCanvas().style.cursor = "pointer"));
+  mapa.on("mouseleave", "onibus", () => (mapa.getCanvas().style.cursor = ""));
+  atualizarOnibus();
+});
+
+async function json(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+async function atualizarOnibus(enquadrar = false) {
+  try {
+    const { campos, onibus } = await json("/api/onibus");
+    const i = Object.fromEntries(campos.map((c, n) => [c, n]));
+    const features = onibus.map((o) => {
+      const naLinha = !linhaFiltrada || o[i.linha] === linhaFiltrada;
+      return {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [o[i.lon], o[i.lat]] },
+        properties: {
+          veiculo: o[i.veiculo], linha: o[i.linha], velocidade: o[i.velocidade], idade: o[i.idade_s],
+          cor: cor(o[i.velocidade]), apagado: !naLinha, destaque: !!linhaFiltrada && naLinha,
+        },
+      };
+    });
+    // os da linha escolhida por último, para ficarem por cima
+    features.sort((a, b) => a.properties.destaque - b.properties.destaque);
+    mapa.getSource("onibus")?.setData({ type: "FeatureCollection", features });
+    ultimaAtualizacao = Date.now();
+    const daLinha = features.filter((f) => f.properties.destaque);
+    if (enquadrar && daLinha.length) {
+      const limites = new maplibregl.LngLatBounds();
+      daLinha.forEach((f) => limites.extend(f.geometry.coordinates));
+      mapa.fitBounds(limites, { padding: 80, maxZoom: 14, duration: 800 });
+    }
+  } catch (erro) {
+    console.warn("ônibus:", erro);
+  }
+}
+
+function serie(alvo, pontos, chave = "velocidade_media") {
+  const validos = pontos.filter((p) => p[chave] != null);
+  if (validos.length < 2) {
+    alvo.innerHTML = '<p class="vazio">A série aparece depois de alguns minutos de dados.</p>';
+    return;
+  }
+  const valores = validos.map((p) => p[chave]);
+  const larg = 316, alt = 56, min = Math.min(...valores) * 0.9, max = Math.max(...valores) * 1.05;
+  const x = (n) => (n / (valores.length - 1)) * larg;
+  const y = (v) => alt - ((v - min) / (max - min || 1)) * (alt - 6) - 3;
+  const caminho = valores.map((v, n) => `${n ? "L" : "M"}${x(n).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  alvo.innerHTML = `
+    <svg viewBox="0 0 ${larg} ${alt}" preserveAspectRatio="none" role="img" aria-label="Velocidade média por janela de 5 minutos">
+      <path d="${caminho} L${larg},${alt} L0,${alt} Z" fill="rgba(255,216,74,.08)"/>
+      <path d="${caminho}" fill="none" stroke="#ffd84a" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="eixo num"><span>${hora(validos[0].inicio)}</span><span>${fmt.format(Math.min(...valores))}–${fmt.format(Math.max(...valores))} km/h</span><span>${hora(validos[validos.length - 1].inicio)}</span></div>`;
+}
+
+async function atualizarResumo() {
+  try {
+    const { agora, lentas, serie: pontos } = await json("/api/resumo");
+    if (agora) {
+      const fim = new Date(new Date(agora.inicio).getTime() + 5 * 60000);
+      $("tituloJanela").textContent = `Janela das ${hora(agora.inicio)} às ${hora(fim)}`;
+      $("nOnibus").textContent = agora.onibus.toLocaleString("pt-BR");
+      $("nVelocidade").textContent = fmt.format(agora.velocidade_media);
+      $("nParados").textContent = `${Math.round((100 * agora.parados) / agora.onibus)}%`;
+    }
+    serie($("serieCidade"), pontos);
+    const maior = Math.max(25, ...lentas.map((l) => l.velocidade_media));
+    $("lentas").innerHTML = lentas.length
+      ? lentas.map((l) => `
+        <li><button type="button" data-linha="${l.linha}">
+          <span class="rotulo">${l.linha}<small>${l.onibus} ônibus${l.parados ? `, ${l.parados} parado${l.parados > 1 ? "s" : ""}` : ""}</small></span>
+          <span class="barra"><span style="width:${(100 * l.velocidade_media) / maior}%;background:${cor(l.velocidade_media)}"></span></span>
+          <span class="kmh num">${fmt.format(l.velocidade_media)}</span>
+        </button></li>`).join("")
+      : '<li class="vazio">Aguardando a primeira janela fechada…</li>';
+  } catch (erro) {
+    console.warn("resumo:", erro);
+  }
+}
+
+async function atualizarSaude() {
+  try {
+    const s = await json("/api/saude");
+    const segundos = (v) => (v == null ? "–" : `${fmt.format(v)} s`);
+    $("sMensagens").textContent = s.novas.toLocaleString("pt-BR");
+    $("sDuplicadas").textContent = s.duplicadas.toLocaleString("pt-BR");
+    $("sInvalidas").textContent = s.invalidas.toLocaleString("pt-BR");
+    $("sFonte").textContent = segundos(s.atraso_fonte_s);
+    $("sPipeline").textContent = segundos(s.atraso_pipeline_s);
+    $("aoVivo").classList.toggle("parado", s.ultimo_lote_s == null || s.ultimo_lote_s > 120);
+  } catch {
+    $("aoVivo").classList.add("parado");
+  }
+}
+
+async function escolherLinha(linha) {
+  linhaFiltrada = linha;
+  $("filtro").classList.toggle("ativo", !!linha);
+  atualizarOnibus(!!linha);
+  if (!linha) return;
+  $("filtroLinha").textContent = linha;
+  $("filtroTexto").textContent = "carregando…";
+  $("serieLinha").innerHTML = "";
+  try {
+    const { serie: pontos } = await json(`/api/linhas/${encodeURIComponent(linha)}`);
+    const ultimo = pontos[pontos.length - 1];
+    const velocidade = ultimo.velocidade_media == null ? "" : ` a ${fmt.format(ultimo.velocidade_media)} km/h`;
+    $("filtroTexto").textContent = `${ultimo.onibus} ônibus${velocidade} na janela das ${hora(ultimo.inicio)}`;
+    serie($("serieLinha"), pontos);
+  } catch {
+    $("filtroTexto").textContent = "Sem dados desta linha nas últimas 3 horas.";
+  }
+}
+
+$("lentas").addEventListener("click", (e) => {
+  const botao = e.target.closest("button[data-linha]");
+  if (botao) escolherLinha(botao.dataset.linha);
+});
+$("busca").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const linha = $("campoLinha").value.trim().toUpperCase();
+  if (linha) escolherLinha(linha);
+});
+$("limpar").addEventListener("click", () => { $("campoLinha").value = ""; escolherLinha(null); });
+
+setInterval(() => {
+  if (!ultimaAtualizacao) return;
+  const s = Math.round((Date.now() - ultimaAtualizacao) / 1000);
+  $("atualizado").textContent = s < 2 ? "atualizado agora" : `atualizado há ${s} s`;
+}, 1000);
+
+atualizarResumo();
+atualizarSaude();
+setInterval(atualizarOnibus, 15000);
+setInterval(() => { atualizarResumo(); atualizarSaude(); }, 30000);
+</script>
+</body>
+</html>
